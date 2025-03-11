@@ -64,44 +64,42 @@ const setToStorage = <T,>(key: string, value: T): void => {
 };
 
 function App() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // Initialize state with values from localStorage
+  const [users, setUsers] = useState<User[]>(() =>
+    getFromStorage<User[]>(USERS_KEY, [])
+  );
+  const [projects, setProjects] = useState<Project[]>(() =>
+    getFromStorage<Project[]>(PROJECTS_KEY, [])
+  );
+  const [currentUser, setCurrentUser] = useState<User | null>(() =>
+    getFromStorage<User | null>(CURRENT_USER_KEY, null)
+  );
   const [newUserName, setNewUserName] = useState("");
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
 
-  // Load data from localStorage on initial render
-  useEffect(() => {
-    const storedUsers = getFromStorage<User[]>(USERS_KEY, []);
-    const storedProjects = getFromStorage<Project[]>(PROJECTS_KEY, []);
-    const storedCurrentUser = getFromStorage<User | null>(
-      CURRENT_USER_KEY,
-      null
-    );
-
-    console.log("Initial load from storage:", {
-      storedUsers,
-      storedProjects,
-      storedCurrentUser,
-    });
-
-    setUsers(storedUsers);
-    setProjects(storedProjects);
-    setCurrentUser(storedCurrentUser);
-  }, []);
+  // Remove the initial load effect as we now initialize with localStorage values
 
   // Save data to localStorage whenever it changes
   useEffect(() => {
-    setToStorage(USERS_KEY, users);
+    if (users.length > 0) {
+      // Only save if there's actual data
+      setToStorage(USERS_KEY, users);
+    }
   }, [users]);
 
   useEffect(() => {
-    setToStorage(PROJECTS_KEY, projects);
+    if (projects.length > 0) {
+      // Only save if there's actual data
+      setToStorage(PROJECTS_KEY, projects);
+    }
   }, [projects]);
 
   useEffect(() => {
-    setToStorage(CURRENT_USER_KEY, currentUser);
+    if (currentUser) {
+      // Only save if there's actual data
+      setToStorage(CURRENT_USER_KEY, currentUser);
+    }
   }, [currentUser]);
 
   const handleCreateUser = () => {
@@ -114,8 +112,7 @@ function App() {
     };
 
     console.log("Creating new user:", newUser);
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
+    setUsers((prev) => [...prev, newUser]);
     setCurrentUser(newUser);
     setNewUserName("");
   };
@@ -132,7 +129,7 @@ function App() {
       applications: [],
     };
 
-    setProjects([...projects, newProject]);
+    setProjects((prev) => [...prev, newProject]);
     setNewProjectTitle("");
     setNewProjectDescription("");
   };
