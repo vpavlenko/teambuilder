@@ -37,6 +37,56 @@ function Toast({ title, message, onClose }: ToastProps) {
   );
 }
 
+// User Profile component
+interface UserProfileProps {
+  user: User;
+  isEditing?: boolean;
+  onEdit?: (updatedUser: User) => void;
+}
+
+function UserProfile({ user, isEditing, onEdit }: UserProfileProps) {
+  const [editedName, setEditedName] = useState(user.name);
+  const [editedDescription, setEditedDescription] = useState(user.description);
+
+  if (!isEditing) {
+    return (
+      <div className="user-profile">
+        <div className="user-name">{user.name}</div>
+        {user.description && (
+          <div className="user-description">{user.description}</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="user-profile editing">
+      <input
+        type="text"
+        value={editedName}
+        onChange={(e) => setEditedName(e.target.value)}
+        placeholder="Your name"
+      />
+      <textarea
+        value={editedDescription}
+        onChange={(e) => setEditedDescription(e.target.value)}
+        placeholder="Tell us about yourself..."
+      />
+      <button
+        onClick={() =>
+          onEdit?.({
+            ...user,
+            name: editedName.trim(),
+            description: editedDescription.trim(),
+          })
+        }
+      >
+        Save Profile
+      </button>
+    </div>
+  );
+}
+
 // Project templates
 const PROJECT_TEMPLATES = [
   {
@@ -75,6 +125,7 @@ function App() {
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   // Toast state
   const [toasts, setToasts] = useState<
@@ -226,6 +277,21 @@ function App() {
     }
   };
 
+  const handleUpdateProfile = async (updatedUser: User) => {
+    try {
+      await updateInFirestore(usersCollection, updatedUser);
+      setUsers((prev) =>
+        prev.map((user) => (user.id === updatedUser.id ? updatedUser : user))
+      );
+      setCurrentUser(updatedUser);
+      setIsEditingProfile(false);
+      addToast("Success", "Profile updated successfully!");
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      addToast("Error", "Failed to update profile. Please try again.");
+    }
+  };
+
   // Update the celebration check effect
   useEffect(() => {
     if (!currentUser || !currentUser.celebratedProjects) return;
@@ -347,8 +413,21 @@ function App() {
         <header>
           <h1>Project Marketplace</h1>
           <div className="user-info">
-            Welcome, {currentUser.name}!
-            <button onClick={() => setCurrentUser(null)}>Logout</button>
+            {isEditingProfile ? (
+              <UserProfile
+                user={currentUser}
+                isEditing={true}
+                onEdit={handleUpdateProfile}
+              />
+            ) : (
+              <>
+                <UserProfile user={currentUser} />
+                <button onClick={() => setIsEditingProfile(true)}>
+                  Edit Profile
+                </button>
+                <button onClick={() => setCurrentUser(null)}>Logout</button>
+              </>
+            )}
           </div>
         </header>
 
@@ -402,21 +481,23 @@ function App() {
                     const applicant = users.find((u) => u.id === applicantId);
                     return applicant ? (
                       <div key={applicantId} className="application">
-                        <span>{applicant.name}</span>
-                        <button
-                          onClick={() =>
-                            handleAcceptApplication(project.id, applicantId)
-                          }
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleRejectApplication(project.id, applicantId)
-                          }
-                        >
-                          Reject
-                        </button>
+                        <UserProfile user={applicant} />
+                        <div className="application-actions">
+                          <button
+                            onClick={() =>
+                              handleAcceptApplication(project.id, applicantId)
+                            }
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleRejectApplication(project.id, applicantId)
+                            }
+                          >
+                            Reject
+                          </button>
+                        </div>
                       </div>
                     ) : null;
                   })}

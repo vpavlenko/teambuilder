@@ -109,10 +109,19 @@ header {
 }
 
 .application {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 1fr auto;
   gap: 1rem;
-  margin-bottom: 0.5rem;
+  align-items: start;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.application-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 button {
@@ -294,4 +303,43 @@ input {
   to {
     opacity: 0;
   }
+}
+
+.user-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 4px;
+  background-color: var(--card-background);
+}
+
+.user-profile.editing {
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+}
+
+.user-profile .user-name {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.user-profile .user-description {
+  font-size: 0.9rem;
+  color: #6b7280;
+  white-space: pre-wrap;
+}
+
+.user-profile.editing input,
+.user-profile.editing textarea {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.user-profile.editing textarea {
+  min-height: 80px;
+  resize: vertical;
 }
