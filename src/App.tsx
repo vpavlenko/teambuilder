@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
 import "./App.css";
+import {
+  usersCollection,
+  projectsCollection,
+  getFromFirestore,
+  setToFirestore,
+  updateInFirestore,
+} from "./firebaseCredentials";
+import { User, Project } from "./types";
 
 // Toast interface and component
 interface ToastProps {
@@ -27,25 +35,6 @@ function Toast({ title, message, onClose }: ToastProps) {
       </div>
     </div>
   );
-}
-
-// Types
-interface User {
-  id: string;
-  name: string;
-  description: string;
-  celebratedProjects: string[]; // Array of project IDs where celebration was shown
-}
-
-interface Project {
-  id: string;
-  authorId: string;
-  title: string;
-  description: string;
-  createdAt: number;
-  applications: string[]; // array of user IDs who applied
-  acceptedUsers: string[]; // array of accepted user IDs
-  rejectedUsers: string[]; // array of rejected user IDs
 }
 
 // Project templates
@@ -77,70 +66,15 @@ const PROJECT_TEMPLATES = [
   },
 ];
 
-// Local Storage Keys
-const USERS_KEY = "marketplace_users";
-const PROJECTS_KEY = "marketplace_projects";
-const CURRENT_USER_KEY = "marketplace_current_user";
-
-// Helper functions for localStorage
-const getFromStorage = <T,>(key: string, defaultValue: T): T => {
-  const stored = localStorage.getItem(key);
-  console.log(`Getting from storage [${key}]:`, stored);
-
-  // Return default value if nothing is stored
-  if (!stored) return defaultValue;
-
-  // Parse the stored data
-  const parsed = JSON.parse(stored);
-
-  // Add migration for users to ensure celebratedProjects exists
-  if (key === USERS_KEY) {
-    return parsed.map((user: User) => ({
-      ...user,
-      celebratedProjects: user.celebratedProjects || [],
-    })) as T;
-  }
-
-  // Add migration for currentUser to ensure celebratedProjects exists
-  if (key === CURRENT_USER_KEY && parsed) {
-    return {
-      ...parsed,
-      celebratedProjects: parsed.celebratedProjects || [],
-    } as T;
-  }
-
-  // Add migration for projects to ensure all arrays are initialized
-  if (key === PROJECTS_KEY) {
-    return parsed.map((project: Project) => ({
-      ...project,
-      applications: project.applications || [],
-      acceptedUsers: project.acceptedUsers || [],
-      rejectedUsers: project.rejectedUsers || [],
-    })) as T;
-  }
-
-  return parsed;
-};
-
-const setToStorage = <T,>(key: string, value: T): void => {
-  console.log(`Setting to storage [${key}]:`, value);
-  localStorage.setItem(key, JSON.stringify(value));
-};
-
 function App() {
-  // Initialize state with values from localStorage
-  const [users, setUsers] = useState<User[]>(() =>
-    getFromStorage<User[]>(USERS_KEY, [])
-  );
-  const [projects, setProjects] = useState<Project[]>(() =>
-    getFromStorage<Project[]>(PROJECTS_KEY, [])
-  );
-  const [currentUser, setCurrentUser] = useState<User | null>(() =>
-    getFromStorage<User | null>(CURRENT_USER_KEY, null)
-  );
+  // State
+  const [users, setUsers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [newUserName, setNewUserName] = useState("");
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newProjectDescription, setNewProjectDescription] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // Toast state
   const [toasts, setToasts] = useState<
@@ -150,29 +84,26 @@ function App() {
   // Add state to track celebrations shown in the current session
   const [sessionCelebrations, setSessionCelebrations] = useState<string[]>([]);
 
-  // Remove the initial load effect as we now initialize with localStorage values
-
-  // Save data to localStorage whenever it changes
+  // Load initial data
   useEffect(() => {
-    if (users.length > 0) {
-      // Only save if there's actual data
-      setToStorage(USERS_KEY, users);
-    }
-  }, [users]);
+    const loadData = async () => {
+      try {
+        const loadedUsers = await getFromFirestore<User>(usersCollection);
+        const loadedProjects = await getFromFirestore<Project>(
+          projectsCollection
+        );
+        setUsers(loadedUsers);
+        setProjects(loadedProjects);
+      } catch (error) {
+        console.error("Error loading data:", error);
+        addToast("Error", "Failed to load data. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  useEffect(() => {
-    if (projects.length > 0) {
-      // Only save if there's actual data
-      setToStorage(PROJECTS_KEY, projects);
-    }
-  }, [projects]);
-
-  useEffect(() => {
-    if (currentUser) {
-      // Only save if there's actual data
-      setToStorage(CURRENT_USER_KEY, currentUser);
-    }
-  }, [currentUser]);
+    loadData();
+  }, []);
 
   // Function to add a toast
   const addToast = (title: string, message: string) => {
@@ -185,7 +116,7 @@ function App() {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   };
 
-  const handleCreateUser = () => {
+  const handleCreateUser = async () => {
     if (!newUserName.trim()) return;
 
     const newUser: User = {
@@ -195,13 +126,18 @@ function App() {
       celebratedProjects: [],
     };
 
-    console.log("Creating new user:", newUser);
-    setUsers((prev) => [...prev, newUser]);
-    setCurrentUser(newUser);
-    setNewUserName("");
+    try {
+      await setToFirestore(usersCollection, newUser);
+      setUsers((prev) => [...prev, newUser]);
+      setCurrentUser(newUser);
+      setNewUserName("");
+    } catch (error) {
+      console.error("Error creating user:", error);
+      addToast("Error", "Failed to create user. Please try again.");
+    }
   };
 
-  const handleCreateProject = () => {
+  const handleCreateProject = async () => {
     if (!currentUser || !newProjectTitle.trim()) return;
 
     const newProject: Project = {
@@ -215,67 +151,79 @@ function App() {
       rejectedUsers: [],
     };
 
-    setProjects((prev) => [...prev, newProject]);
-    setNewProjectTitle("");
-    setNewProjectDescription("");
+    try {
+      await setToFirestore(projectsCollection, newProject);
+      setProjects((prev) => [...prev, newProject]);
+      setNewProjectTitle("");
+      setNewProjectDescription("");
+    } catch (error) {
+      console.error("Error creating project:", error);
+      addToast("Error", "Failed to create project. Please try again.");
+    }
   };
 
-  const handleApplyToProject = (projectId: string) => {
+  const handleApplyToProject = async (projectId: string) => {
     if (!currentUser) return;
 
-    setProjects(
-      projects.map((project) => {
-        if (
-          project.id === projectId &&
-          !project.applications.includes(currentUser.id)
-        ) {
-          return {
-            ...project,
-            applications: [...project.applications, currentUser.id],
-          };
-        }
-        return project;
-      })
-    );
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    const updatedProject = {
+      ...project,
+      applications: [...project.applications, currentUser.id],
+    };
+
+    try {
+      await updateInFirestore(projectsCollection, updatedProject);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? updatedProject : p))
+      );
+    } catch (error) {
+      console.error("Error applying to project:", error);
+      addToast("Error", "Failed to apply to project. Please try again.");
+    }
   };
 
-  const handleAcceptApplication = (projectId: string, userId: string) => {
-    setProjects(
-      projects.map((project) => {
-        if (project.id === projectId) {
-          // Ensure the user isn't already in acceptedUsers to prevent duplicates
-          if (!project.acceptedUsers?.includes(userId)) {
-            return {
-              ...project,
-              applications: project.applications.filter((id) => id !== userId),
-              acceptedUsers: [...(project.acceptedUsers || []), userId],
-            };
-          } else {
-            // If user is already accepted, just remove from applications
-            return {
-              ...project,
-              applications: project.applications.filter((id) => id !== userId),
-            };
-          }
-        }
-        return project;
-      })
-    );
+  const handleAcceptApplication = async (projectId: string, userId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    const updatedProject = {
+      ...project,
+      applications: project.applications.filter((id) => id !== userId),
+      acceptedUsers: [...project.acceptedUsers, userId],
+    };
+
+    try {
+      await updateInFirestore(projectsCollection, updatedProject);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? updatedProject : p))
+      );
+    } catch (error) {
+      console.error("Error accepting application:", error);
+      addToast("Error", "Failed to accept application. Please try again.");
+    }
   };
 
-  const handleRejectApplication = (projectId: string, userId: string) => {
-    setProjects(
-      projects.map((project) => {
-        if (project.id === projectId) {
-          return {
-            ...project,
-            applications: project.applications.filter((id) => id !== userId),
-            rejectedUsers: [...(project.rejectedUsers || []), userId],
-          };
-        }
-        return project;
-      })
-    );
+  const handleRejectApplication = async (projectId: string, userId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    const updatedProject = {
+      ...project,
+      applications: project.applications.filter((id) => id !== userId),
+      rejectedUsers: [...project.rejectedUsers, userId],
+    };
+
+    try {
+      await updateInFirestore(projectsCollection, updatedProject);
+      setProjects((prev) =>
+        prev.map((p) => (p.id === projectId ? updatedProject : p))
+      );
+    } catch (error) {
+      console.error("Error rejecting application:", error);
+      addToast("Error", "Failed to reject application. Please try again.");
+    }
   };
 
   // Update the celebration check effect
@@ -291,7 +239,6 @@ function App() {
         !currentUser.celebratedProjects.includes(project.id) &&
         !sessionCelebrations.includes(project.id)
       ) {
-        // Add to pending celebrations
         pendingCelebrations.push({
           projectId: project.id,
           title: project.title,
@@ -300,33 +247,40 @@ function App() {
     });
 
     if (pendingCelebrations.length > 0) {
-      // Add all to session celebrations to prevent showing again
       setSessionCelebrations((prev) => [
         ...prev,
         ...pendingCelebrations.map((cel) => cel.projectId),
       ]);
 
-      // Show toast for each celebration
       pendingCelebrations.forEach((cel) => {
         addToast("Поздравляем!", `Вас приняли в проект '${cel.title}'!`);
       });
 
-      // Update user's celebratedProjects to permanently remove these celebrations
-      setUsers((prev) =>
-        prev.map((user) =>
-          user.id === currentUser.id
-            ? {
-                ...user,
-                celebratedProjects: [
-                  ...(user.celebratedProjects || []),
-                  ...pendingCelebrations.map((cel) => cel.projectId),
-                ],
-              }
-            : user
-        )
-      );
+      const updatedUser = {
+        ...currentUser,
+        celebratedProjects: [
+          ...currentUser.celebratedProjects,
+          ...pendingCelebrations.map((cel) => cel.projectId),
+        ],
+      };
+
+      updateInFirestore(usersCollection, updatedUser)
+        .then(() => {
+          setUsers((prev) =>
+            prev.map((user) =>
+              user.id === currentUser.id ? updatedUser : user
+            )
+          );
+        })
+        .catch((error) => {
+          console.error("Error updating user celebrations:", error);
+        });
     }
   }, [currentUser, projects]);
+
+  if (loading) {
+    return <div className="loading">Loading...</div>;
+  }
 
   if (!currentUser) {
     return (
